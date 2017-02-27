@@ -63,14 +63,17 @@ int main(int argc, char *argv[]) {
   nthreads = 2;
   int indA_1 = 0;
   int indB_1 = N/2;
-  int indA_2 = (N/2)+DATA_LEN;
+  int indA_2 = N/2;
   int indB_2 = N;
+  printf("Thread 1's indices: %d, %d\n", indA_1, indB_1);
+  printf("Thread 2's indices: %d, %d\n", indA_2, indB_2);
+  printf("\n\n");
 
   clock_t outer_start,outer_end;
   int i,j,k;
   /* WORK */
   outer_start = clock();
-  for (i=0; i<nsteps; i++) {
+  for (i=0; i<nsteps; i++) { printf("----NSTEPS=%d-----\n", i);
 /*
     for (j=indA_2; j<indB_2*DATA_LEN; j+=DATA_LEN) {
 
@@ -100,9 +103,13 @@ int main(int argc, char *argv[]) {
     #pragma omp parallel num_threads(nthreads)
     {
       int id = omp_get_thread_num();
-      if (id==0)
+      if (id==0) {
+		printf("thread %d will handle indices %d<=j<%d\n", omp_get_thread_num(), indA_1*DATA_LEN, indB_1*DATA_LEN);
         calculate_force(data,N,force,indA_1,indB_1,G,buffer,dt);
+	  }
       else {
+		//usleep(100);
+		printf("thread %d will handle indices %d<=j<%d\n", omp_get_thread_num(), indA_2*DATA_LEN, indB_2*DATA_LEN);
         calculate_force(data,N,force,indA_2,indB_2,G,buffer,dt);
       }
     }
@@ -144,10 +151,11 @@ void calculate_force(double *data,
                     double G,
                     double *buffer,
                     double dt) {
-
+ 
   int j,k;
   double rx,ry,r,denom,factor;
-  for (j=indA; j<indB*DATA_LEN; j+=DATA_LEN) {
+  for (j=indA*DATA_LEN; j<indB*DATA_LEN; j+=DATA_LEN) {
+	printf("thread %d got indices %d and %d\n", omp_get_thread_num(), indA, indB);
     force[j] = 0;
     force[j+1] = 0;
     for (k=0; k<nparticles*DATA_LEN; k+=DATA_LEN) {
@@ -162,16 +170,18 @@ void calculate_force(double *data,
     }
     force[j] = -G*force[j];
     force[j+1] = -G*force[j+1];
-
+	printf("thread %d handling index %d (body %d), calling move:\n", omp_get_thread_num(), j, j/DATA_LEN);
     move(data,buffer,force,j,dt);
-    printf("j, data[0]: %d, %lf\n", j, data[0]);
+    //printf("j, data[0]: %d, %lf\n", j, data[0]);
   }
 }
 
 void move(double *data, double *buffer, double *force, int body, double dt) {
-  buffer[body+3] = data[body+3]+dt*force[body];
-  buffer[body+1+3] = data[body+1+3]+dt*force[body+1];
-  buffer[body+2] = data[body+2];
-  buffer[body] = data[body]+dt*buffer[body+3];
-  buffer[body+1] = data[body+1]+dt*buffer[body+1+3];
+  buffer[body+3] = data[body+3]+dt*force[body];			// update velX
+  buffer[body+1+3] = data[body+1+3]+dt*force[body+1];	// update velY
+  buffer[body+2] = data[body+2];						// copy mass
+  buffer[body] = data[body]+dt*buffer[body+3];			// update posX
+  buffer[body+1] = data[body+1]+dt*buffer[body+1+3];	// update posY
+  int x = omp_get_thread_num();
+  printf("thread %d moved body %d to: %lf (posX)\n", omp_get_thread_num(), body/DATA_LEN, buffer[body]);
 }
